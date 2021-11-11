@@ -38,6 +38,7 @@ jobs:
 
       - name: Pull & update submodules recursively
         run: |
+          ls -r
           cd ./public/client-protocol
           git pull https://github.com/open-contracts/client-protocol
       - name: Commit
