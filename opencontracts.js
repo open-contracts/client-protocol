@@ -27,6 +27,7 @@ class RegistryError extends Error{
         this.name = registryErrorTypeName
     }
 }
+
 /**
  * Error type to be thrown when error is on the client.
  */
