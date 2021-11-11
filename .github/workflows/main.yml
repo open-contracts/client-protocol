@@ -38,9 +38,9 @@ jobs:
 
       - name: Pull & update submodules recursively
         run: |
-          ls public
-          cd public/client-protocol
-          git pull https://github.com/open-contracts/client-protocol
+          cd public
+          git submodule update --init --recursive
+          git submodule update --recursive --remote
       - name: Commit
         run: |
           git config user.email "actions@github.com"
