@@ -14,7 +14,6 @@ jobs:
         with: 
           repository: open-contracts/old
           token: ${{ secrets.PRIVATE_TOKEN_GITHUB }}
-          path: ./public
 
       - name: Pull & update submodules recursively
         run: |
@@ -36,6 +35,7 @@ jobs:
         with: 
           repository: open-contracts/open-contracts.github.io
           token: ${{ secrets.PRIVATE_TOKEN_GITHUB }}
+          path: ./public
 
       - name: Pull & update submodules recursively
         run: |
