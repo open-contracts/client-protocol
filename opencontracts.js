@@ -1,6 +1,7 @@
 /**
  * Error type to be thrown when error is in the enclave.
  */
+
 const enclaveErrorTypeName = "EnclaveError";
 class EnclaveError extends Error{
     /**
