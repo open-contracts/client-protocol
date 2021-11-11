@@ -12,6 +12,7 @@ class EnclaveError extends Error{
         this.name = enclaveErrorTypeName
     }
 }
+
 /**
  * Error type to be thrown when error is in the registry.
  */
