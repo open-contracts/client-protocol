@@ -38,7 +38,7 @@ jobs:
 
       - name: Pull & update submodules recursively
         run: |
-          gut submodule sync --recursive
+          git submodule sync --recursive
           git submodule foreach git pull
       - name: Commit
         run: |
