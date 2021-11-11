@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with: 
-          repository: open-contracts/open-contracts.github.io/react
+          repository: open-contracts/open-contracts.github.io@react
           token: ${{ secrets.PRIVATE_TOKEN_GITHUB }}
 
       - name: Pull & update submodules recursively
