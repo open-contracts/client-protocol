@@ -35,10 +35,11 @@ jobs:
         with: 
           repository: open-contracts/open-contracts.github.io
           token: ${{ secrets.PRIVATE_TOKEN_GITHUB }}
+          path: ./public/client-protocol
 
       - name: Pull & update submodules recursively
         run: |
-          git submodule foreach --recursive git pull https://github.com/open-contracts/client-protocol
+          git submodule update --init --recursive
           git submodule update --remote --recursive
       - name: Commit
         run: |
