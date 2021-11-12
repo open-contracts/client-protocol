@@ -1,3 +1,4 @@
+
 /**
  * Error type to be thrown when error is in the enclave.
  */
