@@ -327,7 +327,7 @@ async function OpenContracts() {
             status = "initialized";
         } else {
             status = "error";
-            throw new ClientError("No Metamask detected.");
+            //throw new ClientError("No Metamask detected.");
         }
     }
     
