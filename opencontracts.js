@@ -186,7 +186,7 @@ async function enclaveSession(opencontracts, f) {
         waiting = true;
         ws.send(JSON.stringify({fname: 'get_oracle_ip'}));
     }
-    setTimeout(()=> if (waiting) {f.waitHandler(30, "Oracle booting up...")}, 3000);
+    setTimeout(()=> {if (waiting) {f.waitHandler(30, "Oracle booting up...")}}, 3000);
     ws.onmessage = async function (event) {
         waiting = false;
         const data = JSON.parse(event.data);
