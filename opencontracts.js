@@ -131,17 +131,17 @@ async function requestHubTransaction(opencontracts, f, nonce, calldata, oracleSi
         "forwardCall(address,bytes4,bytes,bytes,address,bytes)"
     ](
         opencontracts.contract.address, nonce, calldata, oracleSignature, oracleProvider, registrySignature
-    );
+    ).catch((error) => {f.errorHandler(error)});
     //estimateForwarder = await opencontracts.OPNforwarder.estimateGas["forwardCall(address,bytes)"](
     //   opencontracts.contract.address, calldata, overrides={from: opencontracts.OPNhub.address});
     estimateContract = await opencontracts.contract.estimateGas[fn](
         ...call, overrides={from: opencontracts.OPNforwarder.address}
-    );
+    ).catch((error) => {f.errorHandler(error)});
     estimateTotal = estimateHub.add(estimateContract);
     opencontracts.OPNhub.connect(opencontracts.signer).forwardCall(
         opencontracts.contract.address, nonce, calldata, oracleSignature,
         oracleProvider, registrySignature, overrides={gasLimit: estimateTotal}
-    );
+    ).catch((error) => {f.errorHandler(error)});
 }
 
 async function encrypt(AESkey, json) {
