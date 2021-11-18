@@ -273,7 +273,7 @@ async function connect(opencontracts, f, oracleIP) {
                             var success = false;    
                             var txReturn = await txReturn.wait(1)
                             .then(tx=>{success=True; return tx})
-                            .catch(e=> _f.errorHandler(e.reason + " (Check your MetaMask for details)"))
+                            .catch(e=> _f.errorHandler(e.reason + " (Check your MetaMask for details)"));
                             if (success) {return String(txReturn)}
                         } else {
                             if (txReturn.hash != undefined) {var txReturn = "Transaction Confirmed."}
@@ -495,7 +495,7 @@ async function OpenContracts() {
                                 var success = false;    
                                 var txReturn = await txReturn.wait(1)
                                 .then(tx=>{success=True; return tx})
-                                .catch(e=> _f.errorHandler(e.reason + " (Check your MetaMask for details)"))
+                                .catch(e=> _f.errorHandler(e.reason + " (Check your MetaMask for details)"));
                                 if (success) {return String(txReturn)}
                             } else {
                                 if (txReturn.hash != undefined) {var txReturn = "Transaction Confirmed."}
