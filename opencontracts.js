@@ -400,9 +400,9 @@ async function OpenContracts() {
                 f.stateMutability = contract.abi[i].stateMutability;
                 f.oracleFolder = contract.abi[i].oracleFolder;
                 f.requiresOracle = (f.oracleFolder != undefined);
-                f.errorHandler = async function (message) {
+                f.errorHandler = async function (error) {
                     console.warn(`Warning: using default (popup) errorHandler for function ${f.name}`); 
-                    alert("Error in enclave. Traceback:\n" + message);
+                    alert(error);
                 };
                 if (f.requiresOracle) {
                     f.printHandler = async function(message) {
