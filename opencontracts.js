@@ -273,7 +273,7 @@ async function ethereumTransaction(opencontracts, f) {
         const msgValue = ethers.utils.parseEther(args.shift());
         args.push({value: msgValue});
     }
-    return await opencontracts.contract.connect(opencontracts.signer).functions[f.name].apply(this, args).catch((error) => {console.log(error); f.errorHandler(error)});
+    return await opencontracts.contract.connect(opencontracts.signer).functions[f.name].apply(this, args);
 }
 
 
