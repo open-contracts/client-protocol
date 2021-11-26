@@ -296,7 +296,7 @@ async function connect(opencontracts, f, oracleIP) {
 
 async function ethereumTransaction(opencontracts, f) {
     args = [];
-    for (let i = 0; i < f.inputs.length; i++) {args.push(f.inputs[i].value)}
+    for (let i = 0; i < f.inputs.length; i++) {args.push(f.inputs[i].value); console.log(args[i])}
     if (f.stateMutability == 'payable') {
         const msgValue = ethers.utils.parseEther(args.shift());
         args.push({value: msgValue});
