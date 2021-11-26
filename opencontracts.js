@@ -229,6 +229,7 @@ async function connect(opencontracts, f, oracleIP) {
     var xpraFinished = null;
     ws.onopen = function(event) {ws.send(JSON.stringify({fname: 'get_attestation'}))};
     ws.onerror = function(event) {f.errorHandler(new EnclaveError(event.type))};
+    ws.onclose = function(event) {f.errorHandler(new EnclaveError("Enclave closed connection."))};
     ws.onmessage = async function (event) {
         var data = JSON.parse(event.data);
         if (data['fname'] == "attestation") {
