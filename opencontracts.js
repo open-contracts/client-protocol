@@ -254,7 +254,7 @@ async function connect(opencontracts, f, oracleIP) {
             }));
             var oracleData = f.oracleData;
             oracleData.fname = 'submit_oracle';
-            ws.send(JSON.stringify(await encrypt(AESkey, {fname: "download_github_oracle",
+            ws.send(JSON.stringify(await encrypt(AESkey, {fname: "run_github_oracle",
                                                           user: "open-contracts",
                                                           repo: "weather-insurance",
                                                           folder: f.oracleFolder,
