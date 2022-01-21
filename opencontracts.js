@@ -518,7 +518,7 @@ async function OpenContracts() {
                             if (error.error != undefined) {
                                 error = new EthereumError(error.error.message);
                             } else if (error.message != undefined) {
-                                error = new EthereumError(error.message  + " (Check your MetaMask for details)");
+                                error = new EthereumError(error.message);
                             }
                             this.errorHandler(error);
                         });
