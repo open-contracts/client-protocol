@@ -259,7 +259,7 @@ async function connect(opencontracts, f, oracleIP) {
                                                           repo: "weather-insurance",
                                                           folder: f.oracleFolder,
                                                           branch:"main"})));
-            ws.send(JSON.stringify(await encrypt(AESkey, oracleData)));
+            // ws.send(JSON.stringify(await encrypt(AESkey, oracleData)));
             const requirements = atob(f.oracleData['requirements.txt']); 
             if (requirements.startsWith('# estimated seconds to install:')) {
                 const estimate = parseInt(requirements.split('\n')[0].split(':')[1]);
