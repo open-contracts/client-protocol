@@ -377,13 +377,14 @@ async function getOraclePys(user, repo, ref) {
 
 
 async function OpenContracts() {
+    // TODO: get error handler
     const opencontracts = {};
     var status = "loading";
     const initialization = new Promise((resolve, reject) => {setInterval(()=> {
         if (status == "initialized") {
             resolve(opencontracts);
-        } else if (status == "error"){
-            reject(new ClientError("No Metamask detected."));
+        } else if (status != "initialized"){
+            reject(new ClientError(status));
         }
     }, 100)});
     
@@ -403,14 +404,13 @@ async function OpenContracts() {
             const networks = {"1": "mainnet", "3": "ropsten", "10": "optimism", "42161": "arbitrum"};
             const chainID = String((await opencontracts.provider.getNetwork()).chainId);
             if (!(chainID in networks)) {
-                throw new ClientError("Your Metamask is set to a chain with unknown ID. Please change your network to Ropsten, Arbitrum or Optimism.");
+               status = "Your Metamask is set to a chain with unknown ID. Please change your network to Ropsten, Arbitrum or Optimism.";
             }
             opencontracts.network = networks[chainID];
             opencontracts.signer = opencontracts.provider.getSigner();
             status = "initialized";
         } else {
-            status = "error";
-            //throw new ClientError("No Metamask detected.");
+            status = "No Metamask detected.";
         }
     }
     
