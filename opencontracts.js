@@ -378,6 +378,7 @@ async function getOraclePys(user, repo, ref) {
 
 async function OpenContracts() {
     // TODO: get error handler
+    // TODO: add args for link to github or ipfs repo
     const opencontracts = {};
     var status = "loading";
     const initialization = new Promise((resolve, reject) => {setInterval(()=> {
@@ -413,7 +414,7 @@ async function OpenContracts() {
             status = "No Metamask detected.";
         }
     }
-    // TODO: add args for link to github or ipfs repo
+ 
     const [_, user, repo, branch] = window.location.hash.replace(/\/+$/, "").split('/');
     opencontracts.location = `https://raw.githubusercontent.com/${user}/${repo}/${branch || "main"}`;
     console.warn('loading contract at:', opencontracts.location);
@@ -444,7 +445,7 @@ async function OpenContracts() {
             }
         }
         const contractInterface = opencontracts.contractInterface;
-        const oracleInterface = opencontracts.oracleInterface;
+        const contractOracles = opencontracts.contractOracles;
         console.warn(contractInterface, contractInterface.address, contractInterface["address"]);
         window.ci = contractInterface;
         if (!(this.network in contractInterface["address"])) {
