@@ -446,9 +446,9 @@ async function OpenContracts() {
             }
         }
         
-        if (!(this.network in contractInterface)) {
+        if (!(this.network in contractInterface.address)) {
             var errormsg = "Your Metamask is set to " + this.network + ", which is not supported by this contract.";
-            throw new ClientError(errormsg + " Set your Metamask to one of: " +  Object.keys(contractInterface));
+            throw new ClientError(errormsg + " Set your Metamask to one of: " +  Object.keys(contractInterface.address));
         } else {
             this.contract = new ethers.Contract(contractInterface.address[this.network], contractInterface.abi, this.provider);
             this.contractName = contractInterface.name;
