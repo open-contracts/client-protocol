@@ -460,6 +460,7 @@ async function OpenContracts() {
           }
           opencontracts.network = networks[chainID];
           opencontracts.signer = opencontracts.provider.getSigner();
+          opencontracts.walletConnected = true;
         } else {
           errorHandler(new ClientError("No Metamask Detected. Get it at [metamask.io](https://metamask.io/)"));
         }
