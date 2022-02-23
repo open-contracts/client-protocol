@@ -244,8 +244,8 @@ async function connect(opencontracts, f, oracle) {
     //   oracleIP.split('/')[0];
     //const oracleIP = oracleIP.substring(domain.length+1);
     const location = oracleIP;
-    console.warn("wss://" + domain + ":8080/" + oracleIP);
-    var ws = new WebSocket("wss://" + domain + ":8081/" + location);
+    console.warn(`wss://${domain}:8081/${location}/`);
+    var ws = new WebSocket(`wss://${domain}:8081/${location}/`);
     var ETHkey = null;
     var AESkey = null;
     var encryptedAESkey = null;
