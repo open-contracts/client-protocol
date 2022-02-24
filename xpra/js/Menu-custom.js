@@ -37,12 +37,15 @@ function addWindowListItem(wid, title){
 			client._window_set_focus(client.id_to_window[wid]);
 		}
 	};
-	a.onclick=function(){
-		if(jQuery(client.id_to_window[wid].div).is(":hidden")){
-			jQuery(client.id_to_window[wid].div).show();
+	a.onclick=function(e){
+		// Skip handling minimize, maximize, close events.
+		if ($(e.target).hasClass("menu-content-right")) return;
+		if (client.id_to_window[wid].minimized) {
+			client.id_to_window[wid].toggle_minimized();
+		} else {
+			client._window_set_focus(client.id_to_window[wid]);
 		}
 		this.parentElement.parentElement.className="-hide";
-		client._window_set_focus(client.id_to_window[wid]);
 	};
 
 	function hideWindowList() {
@@ -54,7 +57,7 @@ function addWindowListItem(wid, title){
 	divLeft.className="menu-divleft";
 	const img = new Image();
 	img.id = "windowlistitemicon"+wid;
-	img.src="/favicon.png";
+	img.src="favicon.png";
 	img.className="menu-content-left";
 	divLeft.appendChild(img);
 
@@ -116,6 +119,7 @@ $(function() {
 	});
 	float_menu.on("dragstop",function(ev,ui){
 		client.mouse_grabbed = false;
+		client.toolbar_position="custom";
 		client.reconfigure_all_trays();
 	});
 

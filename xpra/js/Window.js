@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2017 Antoine Martin <antoine@xpra.org>
+ * Copyright (c) 2013-2022 Antoine Martin <antoine@xpra.org>
  * Copyright (c) 2014 Joshua Higgins <josh@kxes.net>
  * Copyright (c) 2015-2016 Spikes, Inc.
  * Licensed under MPL 2.0
@@ -14,52 +14,59 @@
 
 "use strict";
 
+
+const TASKBAR_HEIGHT = 0;
+
 /**
  * This is the class representing a window we draw on the canvas.
  * It has a geometry, it may have borders and a top bar.
  * The contents of the window is an image, which gets updated
  * when we receive pixels from the server.
  */
-function XpraWindow(client, canvas_state, wid, x, y, w, h, metadata, override_redirect, tray, client_properties, geometry_cb, mouse_move_cb, mouse_down_cb, mouse_up_cb, mouse_scroll_cb, set_focus_cb, window_closed_cb, scale) {
+function XpraWindow(client, wid, x, y, w, h,
+					metadata, override_redirect, tray, client_properties,
+					geometry_cb, mouse_move_cb, mouse_down_cb, mouse_up_cb, mouse_scroll_cb,
+					set_focus_cb, window_closed_cb, scale) {
 	// use me in jquery callbacks as we lose 'this'
-	const me = this;
-	// there might be more than one client
 	this.client = client;
+
+	//xpra specific attributes:
+	this.wid = wid;
+	//enclosing div in page DOM
+	this.div = jQuery("#" + String(wid));
+
+	//these values represent the internal geometry
+	//i.e. geometry as windows appear to the compositor
+	this.x = x;
+	this.y = y;
+	this.w = w;
+	this.h = h;
+	// scaling for client display width override
+	this.scale = scale;
+
+	this.metadata = {};
+	this.override_redirect = override_redirect;
+	this.tray = tray;
+	this.has_alpha = false;
+	this.client_properties = client_properties;
+
+	this.set_focus_cb = set_focus_cb || null;
+	this.mouse_move_cb = mouse_move_cb || null;
+	this.mouse_down_cb = mouse_down_cb || null;
+	this.mouse_up_cb = mouse_up_cb || null;
+	this.mouse_scroll_cb = mouse_scroll_cb || null;
+	this.geometry_cb = geometry_cb || null;
+	this.window_closed_cb = window_closed_cb || null;
+
 	this.log = function() { client.log.apply(client, arguments); };
 	this.warn = function() { client.warn.apply(client, arguments); };
 	this.error = function() { client.error.apply(client, arguments); };
 	this.exc = function() { client.exc.apply(client, arguments); };
 	this.debug = function() { client.debug.apply(client, arguments); };
 	this.debug_categories = client.debug_categories;
-	//keep reference both the internal canvas and screen drawn canvas:
-	this.canvas = canvas_state;
-	this.canvas_ctx = this.canvas.getContext('2d');
-	this.canvas_ctx.imageSmoothingEnabled = false;
-	this.offscreen_canvas = null;
-	this.offscreen_canvas_ctx = null;
-	this._init_2d_canvas();
-	this.draw_canvas = this.offscreen_canvas;
-	this.paint_queue = [];
-	this.paint_pending = 0;
 
-	//enclosing div in page DOM
-	this.div = jQuery("#" + String(wid));
-
-	//callbacks start null until we finish init:
-	this.geometry_cb = null;
-	this.mouse_move_cb = null;
-	this.mouse_down_cb = null;
-	this.mouse_up_cb = null;
-	this.mouse_scroll_cb = null;
-	this.window_closed_cb = null;
-
-	//xpra specific attributes:
-	this.wid = wid;
-	this.metadata = {};
-	this.override_redirect = override_redirect;
-	this.tray = tray;
-	this.has_alpha = false;
-	this.client_properties = client_properties;
+	this.canvas = null;
+	this.init_canvas();
 
 	//window attributes:
 	this.title = null;
@@ -73,40 +80,14 @@ function XpraWindow(client, canvas_state, wid, x, y, w, h, metadata, override_re
 	this.resizable = false;
 	this.stacking_layer = 0;
 
-	//these values represent the internal geometry
-	//i.e. geometry as windows appear to the compositor
-	this.x = x;
-	this.y = y;
-	this.w = w;
-	this.h = h;
-
-	// scaling for client display width override
-	this.scale = scale;
+	// Icon cache
+	this.icon = null;
 
 	// get offsets
 	this.leftoffset = parseInt(jQuery(this.div).css('border-left-width'), 10);
 	this.rightoffset = parseInt(jQuery(this.div).css('border-right-width'), 10);
 	this.topoffset = parseInt(jQuery(this.div).css('border-top-width'), 10);
 	this.bottomoffset = parseInt(jQuery(this.div).css('border-bottom-width'), 10);
-
-	// Hook up the events we want to receive:
-	this.set_focus_cb = set_focus_cb || null;
-	this.mouse_move_cb = mouse_move_cb || null;
-	this.mouse_down_cb = mouse_down_cb || null;
-	this.mouse_up_cb = mouse_up_cb || null;
-	this.mouse_scroll_cb = mouse_scroll_cb || null;
-	jQuery(this.canvas).mousedown(function (e) {
-		me.on_mousedown(e);
-	});
-	jQuery(this.canvas).mouseup(function (e) {
-		me.on_mouseup(e);
-	});
-	jQuery(this.canvas).mousemove(function (e) {
-		me.on_mousemove(e);
-	});
-
-	this.geometry_cb = geometry_cb || null;
-	this.window_closed_cb = window_closed_cb || null;
 
 	// update metadata that is safe before window is drawn
 	this.update_metadata(metadata, true);
@@ -129,164 +110,17 @@ function XpraWindow(client, canvas_state, wid, x, y, w, h, metadata, override_re
 	}
 	else if((this.windowtype == "") || (this.windowtype == "NORMAL") || (this.windowtype == "DIALOG") || (this.windowtype == "UTILITY")) {
 		this.resizable = true;
-		jQuery(this.div).addClass("border");
-		// add a title bar to this window if we need to
-		// create header
-		jQuery(this.div).prepend('<div id="head' + String(wid) + '" class="windowhead"> '+
-				'<span class="windowicon"><img class="windowicon" id="windowicon' + String(wid) + '" /></span> '+
-				'<span class="windowtitle" id="title' + String(wid) + '">' + this.title + '</span> '+
-				'<span class="windowbuttons"> '+
-				'<span id="minimize' + String(wid) + '"><img src="icons/minimize.png" /></span> '+
-				'<span id="maximize' + String(wid) + '"><img src="icons/maximize.png" /></span> '+
-				'<span id="close' + String(wid) + '"><img src="icons/close.png" /></span> '+
-				'</span></div>');
-		// make draggable
-		if (this.scale!==1) {
-			jQuery(this.div).draggable({ transform: true });
-		}
-		jQuery(this.div).draggable({ cancel: "canvas" });
-		function root_window_click(ev) {
-			//fake a click on the root window,
-			//this helps some buggy Java applications close their popup menus
-			client.do_window_mouse_click(ev, null, true);
-			client.do_window_mouse_click(ev, null, false);
-		}
-		jQuery("#head"+String(this.wid)).click(root_window_click);
-		jQuery(this.div).on("dragstart",function(ev,ui){
-			client.do_window_mouse_click(ev, me, false);
-			root_window_click(ev);
-			client.mouse_grabbed = true;
-			me.set_focus_cb(me);
-		});
-		jQuery(this.div).on("dragstop",function(ev,ui){
-			client.mouse_grabbed = false;
-			me.handle_moved(ui);
-		});
-		// Use transform if scaled
-		// This disables helper highlight, so we
-		// move the resizable borders in transform plugin
-		if (this.scale!==1) {
-			jQuery(this.div).resizable({ transform: true });
-		}
-		// attach resize handles
-		jQuery(this.div).resizable({ helper: "ui-resizable-helper", "handles": "n, e, s, w, ne, se, sw, nw" });
-		//jQuery(this.div).on("resize",jQuery.debounce(50, function(ev,ui) {
-		//  	me.handle_resized(ui);
-		//}));
-		jQuery(this.div).on("resizestart",function(ev,ui){
-			client.do_window_mouse_click(ev, me, false);
-			client.mouse_grabbed = true;
-		});
-		jQuery(this.div).on("resizestop",function(ev,ui){
-		  	me.handle_resized(ui);
-		  	me.set_focus_cb(me);
-			client.mouse_grabbed = false;
-			//workaround for the window going blank,
-			//just force a refresh:
-			setTimeout(function() {
-				me.client.request_refresh(me.wid);
-			}, 200);
-		});
-		this.d_header = '#head' + String(wid);
-		this.d_closebtn = '#close' + String(wid);
-		this.d_maximizebtn = '#maximize' + String(wid);
-		this.d_minimizebtn = '#minimize' + String(wid);
-		if (this.resizable) {
-			jQuery(this.d_header).dblclick(function() {
-				me.toggle_maximized();
-			});
-			jQuery(this.d_closebtn).click(function() {
-				window_closed_cb(me);
-			});
-			jQuery(this.d_maximizebtn).click(function() {
-				me.toggle_maximized();
-			});
-			jQuery(this.d_minimizebtn).click(function() {
-				me.toggle_minimized();
-			});
-		}
-		else {
-			jQuery(this.d_closebtn).hide();
-			jQuery(this.d_maximizebtn).hide();
-			jQuery('#windowlistitemmax' + String(wid)).hide();
-			jQuery(this.d_minimizebtn).hide();
-		}
-		// adjust top offset
-		this.topoffset = this.topoffset + parseInt(jQuery(this.d_header).css('height'), 10);
-		// stop propagation if we're over the window:
-		jQuery(this.div).mousedown(function (e) {
-			e.stopPropagation();
-		});
-		//bug 2418: if we stop 'mouseup' propagation,
-		//jQuery can't ungrab the window with Firefox
-		//jQuery(this.div).mouseup(function (e) {
-		//	e.stopPropagation();
-		//});
-		// assign some interesting callbacks
-		jQuery(this.d_header).click(function() {
-			if (!me.minimized) {
-				me.client._window_set_focus(me);
-			}
-		});
+		this.add_window_decorations();
 	}
 
 	// create the spinner overlay div
 	jQuery(this.div).prepend('<div id="spinner'+String(wid)+'" class="spinneroverlay"><div class="spinnermiddle"><div class="spinner"></div></div></div>');
 	this.spinnerdiv = jQuery('#spinner'+String(wid));
 
-	// listen for mouse wheel events on my window
-	const div = document.getElementById(wid);
-	function on_mousescroll(e) {
-		me.on_mousescroll(e);
-	}
-	if (Utilities.isEventSupported("wheel")) {
-		div.addEventListener('wheel',			on_mousescroll, false);
-	}
-	else if (Utilities.isEventSupported("mousewheel")) {
-		div.addEventListener('mousewheel',		on_mousescroll, false);
-	}
-	else if (Utilities.isEventSupported("DOMMouseScroll")) {
-		div.addEventListener('DOMMouseScroll',	on_mousescroll, false); // for Firefox
-	}
-
 	this.png_cursor_data = null;
 	this.pointer_down = -1;
 	this.pointer_last_x = 0;
 	this.pointer_last_y = 0;
-	if (window.PointerEvent) {
-		this.canvas.addEventListener("pointerdown", function(ev) {
-			me.debug("mouse", "pointerdown:", ev);
-			if (ev.pointerType=="touch") {
-				me.pointer_down = ev.pointerId;
-				me.pointer_last_x = ev.offsetX;
-				me.pointer_last_y = ev.offsetY;
-			}
-		});
-		this.canvas.addEventListener("pointermove", function(ev) {
-			me.debug("mouse", "pointermove:", ev);
-			if (me.pointer_down==ev.pointerId) {
-				const dx = ev.offsetX-me.pointer_last_x;
-				const dy = ev.offsetY-me.pointer_last_y;
-				me.pointer_last_x = ev.offsetX;
-				me.pointer_last_y = ev.offsetY;
-				const mult = 20.0*(window.devicePixelRatio || 1);
-				ev.wheelDeltaX = Math.round(dx*mult);
-				ev.wheelDeltaY = Math.round(dy*mult);
-				on_mousescroll(ev);
-			}
-		});
-		this.canvas.addEventListener("pointerup", function(ev) {
-			me.debug("mouse", "pointerup:", ev);
-			me.pointer_down = -1;
-		});
-		this.canvas.addEventListener("pointercancel", function(ev) {
-			me.debug("mouse", "pointercancel:", ev);
-			me.pointer_down = -1;
-		});
-		this.canvas.addEventListener("pointerout", function(ev) {
-			me.debug("mouse", "pointerout:", ev);
-		});
-	}
 
 	// adapt to screen size if needed (ie: shadow / desktop windows):
 	this.screen_resized();
@@ -296,28 +130,227 @@ function XpraWindow(client, canvas_state, wid, x, y, w, h, metadata, override_re
 	this.update_metadata(metadata);
 }
 
-XpraWindow.prototype._init_2d_canvas = function() {
+XpraWindow.prototype.add_window_decorations = function() {
+	const me = this;
+	const wid = this.wid;
+	jQuery(this.div).addClass("border");
+	// add a title bar to this window if we need to
+	// create header
+	jQuery(this.div).prepend('<div id="head' + String(wid) + '" class="windowhead"> '+
+			'<span class="windowicon"><img class="windowicon" id="windowicon' + String(wid) + '" /></span> '+
+			'<span class="windowtitle" id="title' + String(wid) + '">' + this.title + '</span> '+
+			'<span class="windowbuttons"> '+
+			'<span id="minimize' + String(wid) + '"><img src="icons/minimize.png" /></span> '+
+			'<span id="maximize' + String(wid) + '"><img src="icons/maximize.png" /></span> '+
+			'<span id="close' + String(wid) + '"><img src="icons/close.png" /></span> '+
+			'</span></div>');
+	// make draggable
+	if (this.scale!==1) {
+		jQuery(this.div).draggable({ transform: true });
+	}
+	jQuery(this.div).draggable({ cancel: "canvas" });
+	jQuery("#head"+String(this.wid)).click(function(ev) {
+		if (!me.minimized) {
+			me.set_focus_cb(me);
+		}
+	});
+	jQuery(this.div).on("dragstart",function(ev){
+		client.release_buttons(ev, me);
+		me.set_focus_cb(me);
+		client.mouse_grabbed = true;
+	});
+	jQuery(this.div).on("dragstop",function(ev,ui){
+		client.mouse_grabbed = false;
+		me.handle_moved(ui);
+	});
+	// Use transform if scaled
+	// This disables helper highlight, so we
+	// move the resizable borders in transform plugin
+	if (this.scale!==1) {
+		jQuery(this.div).resizable({ transform: true });
+	}
+	// attach resize handles
+	jQuery(this.div).resizable({ containment: 'parent', helper: "ui-resizable-helper", "handles": "n, e, s, w, ne, se, sw, nw" });
+	//jQuery(this.div).on("resize",jQuery.debounce(50, function(ev,ui) {
+	//  	me.handle_resized(ui);
+	//}));
+	jQuery(this.div).on("resizestart",function(ev,ui){
+		client.do_window_mouse_click(ev, me, false);
+		client.mouse_grabbed = true;
+	});
+	jQuery(this.div).on("resizestop",function(ev,ui){
+		me.handle_resized(ui);
+		me.set_focus_cb(me);
+		client.mouse_grabbed = false;
+		//workaround for the window going blank,
+		//just force a refresh:
+		setTimeout(function() {
+			me.client.request_refresh(me.wid);
+		}, 200);
+		setTimeout(function() {
+			me.client.request_refresh(me.wid);
+		}, 500);
+	});
+	this.d_header = '#head' + String(wid);
+	this.d_closebtn = '#close' + String(wid);
+	this.d_maximizebtn = '#maximize' + String(wid);
+	this.d_minimizebtn = '#minimize' + String(wid);
+	if (this.resizable) {
+		jQuery(this.d_header).dblclick(function() {
+			me.toggle_maximized();
+		});
+		jQuery(this.d_closebtn).click(function() {
+			me.window_closed_cb(me);
+		});
+		jQuery(this.d_maximizebtn).click(function() {
+			me.toggle_maximized();
+		});
+		jQuery(this.d_minimizebtn).click(function() {
+			me.toggle_minimized();
+		});
+	}
+	else {
+		jQuery(this.d_closebtn).hide();
+		jQuery(this.d_maximizebtn).hide();
+		jQuery('#windowlistitemmax' + String(wid)).hide();
+		jQuery(this.d_minimizebtn).hide();
+	}
+	// adjust top offset
+	this.topoffset = this.topoffset + parseInt(jQuery(this.d_header).css('height'), 10);
+	// stop propagation if we're over the window:
+	jQuery(this.div).mousedown(function (e) {
+		e.stopPropagation();
+	});
+	//bug 2418: if we stop 'mouseup' propagation,
+	//jQuery can't ungrab the window with Firefox
+	//jQuery(this.div).mouseup(function (e) {
+	//	e.stopPropagation();
+	//});
+	// assign callback to focus window if header is clicked.
+	jQuery(this.d_header).click(function(e) {
+		if (!me.minimized && $(e.target).parents('.windowbuttons').length === 0) {
+			me.client._window_set_focus(me);
+		}
+	});
+}
+
+
+XpraWindow.prototype.init_canvas = function() {
+	this.canvas = null;
+	this.div.find("canvas").remove();
+	const canvas = document.createElement("canvas");
+	// set initial sizes
+	canvas.width = this.w;
+	canvas.height = this.h;
+	this.canvas = canvas;
+	this.div.append(canvas);
+	if (this.client.offscreen_api) {
+		// Transfer canvas control.
+		this.transfer_canvas(canvas);
+	}
+	else {
+		//we're going to paint from this class:
+		this.canvas_ctx = this.canvas.getContext('2d');
+		this.canvas_ctx.imageSmoothingEnabled = false;
+
+		this.init_offscreen_canvas();
+
+		this.draw_canvas = this.offscreen_canvas;
+		this.paint_queue = [];
+		this.paint_pending = 0;
+	}
+	this.register_canvas_mouse_events(this.canvas);
+	this.register_canvas_pointer_events(this.canvas);
+}
+
+XpraWindow.prototype.transfer_canvas = function(canvas) {
+	const offscreen_handle = canvas.transferControlToOffscreen();
+	this.client.decode_worker.postMessage({
+		'cmd'    : 'canvas',
+		'wid'    : this.wid,
+		'canvas' : offscreen_handle,
+		'debug'  : this.debug_categories.includes("draw"),
+		}, [offscreen_handle]);
+}
+
+XpraWindow.prototype.init_offscreen_canvas = function() {
 	this.offscreen_canvas = document.createElement("canvas");
-	this.updateCanvasGeometry();
+        this.offscreen_canvas.width = this.w;
+        this.offscreen_canvas.height = this.h;
 	this.offscreen_canvas_ctx = this.offscreen_canvas.getContext('2d');
 	this.offscreen_canvas_ctx.imageSmoothingEnabled = false;
-};
+}
 
 XpraWindow.prototype.swap_buffers = function() {
 	//the up to date canvas is what we'll draw on screen:
 	this.debug("draw", "swap_buffers");
 	this.draw_canvas = this.offscreen_canvas;
-	this._init_2d_canvas();
+	this.init_offscreen_canvas();
 	this.offscreen_canvas_ctx.drawImage(this.draw_canvas, 0, 0);
 };
 
+
+XpraWindow.prototype.register_canvas_mouse_events = function(canvas) {
+	const me = this;
+	// Hook up the events we want to receive:
+	jQuery(canvas).mousedown(function (e) {
+		me.on_mousedown(e);
+	});
+	jQuery(canvas).mouseup(function (e) {
+		me.on_mouseup(e);
+	});
+	jQuery(canvas).mousemove(function (e) {
+		me.on_mousemove(e);
+	});
+}
+
+XpraWindow.prototype.register_canvas_pointer_events = function(canvas) {
+	if (!window.PointerEvent) {
+		return;
+	}
+	const me = this;
+	canvas.addEventListener("pointerdown", function(ev) {
+		me.debug("mouse", "pointerdown:", ev);
+		if (ev.pointerType=="touch") {
+			me.pointer_down = ev.pointerId;
+			me.pointer_last_x = ev.offsetX;
+			me.pointer_last_y = ev.offsetY;
+		}
+	});
+	canvas.addEventListener("pointermove", function(ev) {
+		me.debug("mouse", "pointermove:", ev);
+		if (me.pointer_down==ev.pointerId) {
+			const dx = ev.offsetX-me.pointer_last_x;
+			const dy = ev.offsetY-me.pointer_last_y;
+			me.pointer_last_x = ev.offsetX;
+			me.pointer_last_y = ev.offsetY;
+			const mult = 20.0*(window.devicePixelRatio || 1);
+			ev.wheelDeltaX = Math.round(dx*mult);
+			ev.wheelDeltaY = Math.round(dy*mult);
+			me.on_mousescroll(ev);
+		}
+	});
+	canvas.addEventListener("pointerup", function(ev) {
+		me.debug("mouse", "pointerup:", ev);
+		me.pointer_down = -1;
+	});
+	canvas.addEventListener("pointercancel", function(ev) {
+		me.debug("mouse", "pointercancel:", ev);
+		me.pointer_down = -1;
+	});
+	canvas.addEventListener("pointerout", function(ev) {
+		me.debug("mouse", "pointerout:", ev);
+	});
+}
+
 XpraWindow.prototype.set_spinner = function(state) {
-	if(state) {
+	if (state) {
 		this.spinnerdiv.hide();
 	} else {
 		this.spinnerdiv.css("display", "table");
 	}
 };
+
 
 XpraWindow.prototype.ensure_visible = function() {
 	if (this.client.server_is_desktop || this.client.server_is_shadow) {
@@ -359,6 +392,10 @@ XpraWindow.prototype.ensure_visible = function() {
 };
 
 XpraWindow.prototype.updateCanvasGeometry = function() {
+	if (this.client.offscreen_api) {
+		this.client.decode_worker.postMessage({'cmd': 'canvas-geo', 'wid': this.wid, 'w' : this.w, 'h' : this.h});
+		return;
+	}
 	// set size of both canvas if needed
 	if(this.canvas.width != this.w) {
 		this.canvas.width = this.w;
@@ -400,11 +437,29 @@ XpraWindow.prototype.updateFocus = function() {
 		// set focused style to div
 		jQuery(this.div).addClass("windowinfocus");
 
+		// Update window title
+		jQuery("title").text(location.pathname.replaceAll("/","") + ": " + this.title);
+
+		// Update the icon
+		if (this.icon !== null) {
+			const src = this.update_icon(this.icon.width, this.icon.height, this.icon.encoding, this.icon.img_data);
+			jQuery("#favicon").attr("href", src);
+		} else {
+			jQuery("#favicon").attr("href", "favicon.png");
+		}
 	} else {
 		// set not in focus style
 		jQuery(this.div).removeClass("windowinfocus");
 	}
 };
+
+
+XpraWindow.prototype.suspend = function() {
+}
+XpraWindow.prototype.resume = function() {
+	this.init_canvas();
+}
+
 
 /**
  * Mouse: delegate to client, telling it which window triggered the event.
@@ -498,14 +553,21 @@ XpraWindow.prototype.update_metadata = function(metadata, safe) {
 XpraWindow.prototype.set_metadata_safe = function(metadata) {
 	if ("title" in metadata) {
 		let title = Utilities.s(metadata["title"]);
-		if (this.client.protocol.packet_encoder!="rencodeplus") {
-			title = decodeURIComponent(escape(title));
+		if (this.client.packet_encoder!="rencodeplus") {
+			try {
+				title = decodeURIComponent(escape(title));
+			}
+			catch (e) {
+				this.log("unable to decode title string '"+title+"' received from ", this.client.protocol.packet_encoder, ": "+e);
+			}
 		}
-		this.title = title;
-		console.log("title=", this.title, typeof this.title, this.title.constructor)
-		jQuery('#title' + this.wid).html(this.title);
-		const trimmedTitle = Utilities.trimString(this.title, 30);
-		jQuery('#windowlistitemtitle'+this.wid).text(trimmedTitle);
+		if (this.title!=title) {
+			this.title = title;
+			this.log("title=", this.title)
+			jQuery('#title' + this.wid).html(this.title);
+			const trimmedTitle = Utilities.trimString(this.title, 30);
+			jQuery('#windowlistitemtitle'+this.wid).text(trimmedTitle);
+		}
 	}
 	if ("has-alpha" in metadata) {
 		this.has_alpha = metadata["has-alpha"];
@@ -812,7 +874,7 @@ XpraWindow.prototype.fill_screen = function() {
 	this.x = this.leftoffset;
 	this.y = this.topoffset;
 	this.w = (screen_size[0] - this.leftoffset) - this.rightoffset;
-	this.h = (screen_size[1] - this.topoffset) - this.bottomoffset;
+	this.h = (screen_size[1] - this.topoffset) - this.bottomoffset - TASKBAR_HEIGHT;
 	this.debug("geometry", "fill_screen() ", this.x, this.y, this.w, this.h);
 };
 
@@ -1049,7 +1111,15 @@ XpraWindow.prototype.handle_mouse_click = function(button, pressed, mx, my, modi
 
 
 XpraWindow.prototype.update_icon = function(width, height, encoding, img_data) {
-	let src = "/favicon.png";
+	// Cache the icon.
+	this.icon = {
+		width: width,
+		height: height,
+		encoding: encoding,
+		img_data: img_data
+	};
+
+	let src = "favicon.png";
 	if (encoding=="png") {
 		//move title to the right:
 		$("#title"+ String(this.wid)).css('left', 32);
@@ -1120,9 +1190,7 @@ XpraWindow.prototype.set_cursor = function(encoding, w, h, xhot, yhot, img_data)
 
 
 XpraWindow.prototype.eos = function() {
-	this._close_jsmpeg();
 	this._close_broadway();
-	this._close_video();
 };
 
 
@@ -1179,128 +1247,6 @@ XpraWindow.prototype._close_broadway = function() {
 };
 
 
-XpraWindow.prototype._close_video = function() {
-	this.debug("draw", "close_video: video_source_buffer=", this.video_source_buffer, ", media_source=", this.media_source, ", video=", this.video);
-	this.video_source_ready = false;
-	if(this.video) {
-		if(this.media_source) {
-			try {
-				if(this.video_source_buffer) {
-					this.media_source.removeSourceBuffer(this.video_source_buffer);
-				}
-				this.media_source.endOfStream();
-			} catch(e) {
-				this.exc(e, "video media source EOS error");
-			}
-			this.video_source_buffer = null;
-			this.media_source = null;
-		}
-		this.video.remove();
-		this.video = null;
-	}
-};
-
-XpraWindow.prototype._push_video_buffers = function() {
-	this.debug("draw", "_push_video_buffers()");
-	const vsb = this.video_source_buffer;
-	const vb = this.video_buffers;
-	if(!vb || !vsb || !this.video_source_ready) {
-		return;
-	}
-	if(vb.length==0 && this.video_buffers_count==0) {
-		return;
-	}
-	while(vb.length>0 && !vsb.updating) {
-		const buffers = vb.splice(0, 20);
-		const buffer = [].concat.apply([], buffers);
-		vsb.appendBuffer(new Uint8Array(buffer).buffer);
-		/*
-		 * one at a time:
-		const img_data = vb.shift();
-		const array = new Uint8Array(img_data);
-		vsb.appendBuffer(array.buffer);
-		 */
-		this.video_buffers_count += buffers.length;
-	}
-	if(vb.length>0) {
-		setTimeout(this._push_video_buffers, 25);
-	}
-};
-
-XpraWindow.prototype._init_video = function(width, height, coding, profile, level) {
-	const me = this;
-	this.media_source = MediaSourceUtil.getMediaSource();
-	//MediaSourceUtil.addMediaSourceEventDebugListeners(this.media_source, "video");
-	//<video> element:
-	this.video = document.createElement("video");
-	this.video.muted = true;
-	this.video.setAttribute('autoplay', true);
-	this.video.setAttribute('muted', true);
-	this.video.setAttribute('width', width);
-	this.video.setAttribute('height', height);
-	this.video.style.pointerEvents = "all";
-	this.video.style.position = "absolute";
-	this.video.style.zIndex = this.div.css("z-index")+1;
-	this.video.style.left  = ""+this.leftoffset+"px";
-	this.video.style.top = ""+this.topoffset+"px";
-	if (this.debug_categories.includes("audio")) {
-		MediaSourceUtil.addMediaElementEventDebugListeners(this.video, "video");
-		this.video.setAttribute('controls', "controls");
-	}
-	this.video.addEventListener('error', function() { me.error("video error"); });
-	this.video.src = window.URL.createObjectURL(this.media_source);
-	//this.video.src = "https://html5-demos.appspot.com/static/test.webm"
-	this.video_buffers = [];
-	this.video_buffers_count = 0;
-	this.video_source_ready = false;
-
-	let codec_string = "";
-	if(coding=="h264+mp4" || coding=="mpeg4+mp4") {
-		//ie: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'
-		codec_string = 'video/mp4; codecs="avc1.' + MediaSourceConstants.H264_PROFILE_CODE[profile] + MediaSourceConstants.H264_LEVEL_CODE[level]+'"';
-	}
-	else if(coding=="vp8+webm") {
-		codec_string = 'video/webm;codecs="vp8"';
-	}
-	else if(coding=="vp9+webm") {
-		codec_string = 'video/webm;codecs="vp9"';
-	}
-	else {
-		throw new Error("invalid encoding: "+coding);
-	}
-	this.log("video codec string: "+codec_string+" for "+coding+" profile '"+profile+"', level '"+level+"'");
-	this.media_source.addEventListener('sourceopen', function() {
-		me.log("video media source open");
-		const vsb = me.media_source.addSourceBuffer(codec_string);
-		vsb.mode = "sequence";
-		me.video_source_buffer = vsb;
-		if (me.debug_categories.includes("draw")) {
-			MediaSourceUtil.addSourceBufferEventDebugListeners(vsb, "video");
-		}
-		vsb.addEventListener('error', function(e) { me.error("video source buffer error"); });
-		vsb.addEventListener('waiting', function() {
-			me._push_video_buffers();
-		});
-		//push any buffers that may have accumulated since we initialized the video element:
-		me._push_video_buffers();
-		me.video_source_ready = true;
-	});
-	this.canvas.parentElement.appendChild(this.video);
-};
-
-XpraWindow.prototype._non_video_paint = function(coding) {
-	if(this.video && this.video.style.zIndex!="-1") {
-		this.debug("draw", "bringing canvas above video for ", coding, " paint event");
-		//push video under the canvas:
-		this.video.style.zIndex = "-1";
-		//copy video to canvas:
-		const width = parseInt(this.video.getAttribute("width"));
-		const height = parseInt(this.video.getAttribute("height"));
-		this.offscreen_canvas_ctx.drawImage(this.video, 0, 0, width, height);
-	}
-};
-
-
 /**
  * Updates the window image with new pixel data
  * we have received from the server.
@@ -1326,60 +1272,32 @@ XpraWindow.prototype.paint = function paint() {
  */
 XpraWindow.prototype.may_paint_now = function paint() {
 	this.debug("draw", "may_paint_now() paint pending=", this.paint_pending, ", paint queue length=", this.paint_queue.length);
-	let now = Utilities.monotonicTime();
+	let now = performance.now();
 	while ((this.paint_pending==0 || (now-this.paint_pending)>=2000) && this.paint_queue.length>0) {
 		this.paint_pending = now;
 		const item = this.paint_queue.shift();
 		this.do_paint.apply(this, item);
-		now = Utilities.monotonicTime();
+		now = performance.now();
 	}
 };
 
-const DEFAULT_BOX_COLORS = {
-        "png"     : "yellow",
-        "h264"    : "blue",
-        "vp8"     : "green",
-        "rgb24"   : "orange",
-        "rgb32"   : "red",
-        "jpeg"    : "purple",
-        "webp"    : "pink",
-        "png/P"   : "indigo",
-        "png/L"   : "teal",
-        "h265"    : "khaki",
-        "vp9"     : "lavender",
-        "mpeg4"   : "black",
-        "scroll"  : "brown",
-        "mpeg1"   : "olive",
-        };
-
-XpraWindow.prototype.get_jsmpeg_renderer = function get_jsmpeg_renderer() {
-	if (this.jsmpeg_renderer==null) {
-		const options = {};
-		//webgl is still buggy
-		//if (JSMpeg.Renderer.WebGL.IsSupported()) {
-		//	this.jsmpeg_renderer = new JSMpeg.Renderer.WebGL(options);
-		//}
-		//else {
-		this.jsmpeg_renderer = new JSMpeg.Renderer.Canvas2D(options);
-		//}
-	}
-	return this.jsmpeg_renderer;
-};
-
-XpraWindow.prototype._close_jsmpeg = function _close_jsmpeg() {
-	if (this.jsmpeg_renderer!=null) {
-		this.jsmpeg_renderer.destroy();
-	}
-	//decoder doesn't need cleanup?
-	this.jsmpeg_decoder = null;
-};
-
-XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_data, packet_sequence, rowstride, options, decode_callback) {
+XpraWindow.prototype.do_paint = function paint(packet, decode_callback) {
 	const me = this;
 
-	let enc_width = width;
-	let enc_height = height;
+	const x = packet[2],
+		y = packet[3],
+		width = packet[4],
+		height = packet[5],
+		img_data = packet[7],
+	    options = packet[10] || {};
+	let coding = Utilities.s(packet[6]),
+	    enc_width = width,
+	    enc_height = height;
 	const scaled_size = options["scaled_size"];
+	if(scaled_size) {
+		enc_width = scaled_size[0];
+		enc_height = scaled_size[1];
+	}
 	const bitmap = coding.startsWith("bitmap:");
 	if (bitmap) {
 		coding = coding.split(":")[1];
@@ -1388,10 +1306,7 @@ XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_
 	else {
 		this.debug("draw", "do_paint(", img_data.length, " bytes of", coding, " data ", width, "x", height, " at ", x, ",", y, ") focused=", this.focused);
 	}
-	if(scaled_size) {
-		enc_width = scaled_size[0];
-		enc_height = scaled_size[1];
-	}
+
 	function paint_box(color, px, py, pw, ph) {
 		me.offscreen_canvas_ctx.strokeStyle = color;
 		me.offscreen_canvas_ctx.lineWidth = 2;
@@ -1399,7 +1314,6 @@ XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_
 	}
 
 	function painted(skip_box) {
-		img_data = null;
 		me.paint_pending = 0;
 		if (!skip_box && me.debug_categories.includes("draw")) {
 			const color = DEFAULT_BOX_COLORS[coding] || "white";
@@ -1409,7 +1323,6 @@ XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_
 	}
 
 	function paint_error(e) {
-		img_data = null;
 		me.error("error painting", coding, e);
 		me.paint_pending = 0;
 		decode_callback(""+e);
@@ -1431,69 +1344,18 @@ XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_
 			this.may_paint_now();
 		}
 		else if (coding=="rgb32" || coding=="rgb24") {
-			this._non_video_paint(coding);
 			if (bitmap) {
 				paint_bitmap();
 				return;
 			}
-			//show("options="+(options).toSource());
-			if (options!=null && options["zlib"]>0) {
-				//show("decompressing "+img_data.length+" bytes of "+coding+"/zlib");
-				img_data = new Zlib.Inflate(img_data).decompress();
-			} else if (options!=null && options["lz4"]>0) {
-				img_data = lz4.decode(img_data);
-			}
-			let target_stride = enc_width*4;
-			this.debug("draw", "got ", img_data.length, "bytes of", coding, "to paint with stride", rowstride, ", target stride", target_stride);
-			if (coding=="rgb24") {
-				const uint = new Uint8Array(target_stride*enc_height);
-				let i = 0,
-					j = 0,
-					l = img_data.length;
-				if (rowstride==enc_width*3) {
-					//faster path, single loop:
-					while (i<l) {
-						uint[j++] = img_data[i++];
-						uint[j++] = img_data[i++];
-						uint[j++] = img_data[i++];
-						uint[j++] = 255;
-					}
-				}
-				else {
-					let psrc = 0,
-						pdst = 0;
-					for (i=0; i<enc_height; i++) {
-						psrc = i*rowstride;
-						for (j=0; j<enc_width; j++) {
-							uint[pdst++] = img_data[psrc++];
-							uint[pdst++] = img_data[psrc++];
-							uint[pdst++] = img_data[psrc++];
-							uint[pdst++] = 255;
-						}
-					}
-				}
-				rowstride = target_stride;
-				img_data = uint;
-			}
-			let img = null;
-			if (rowstride>target_stride) {
-				img = this.offscreen_canvas_ctx.createImageData(Math.round(rowstride/4), enc_height);
-			}
-			else {
-				img = this.offscreen_canvas_ctx.createImageData(enc_width, enc_height);
-			}
-			img.data.set(img_data);
-			//this.offscreen_canvas_ctx.clearRect(x, y, width, height);
-			this.offscreen_canvas_ctx.putImageData(img, x, y, 0, 0, enc_width, enc_height);
-			if (enc_width!=width || enc_height!=height) {
-				//scale it:
-				this.offscreen_canvas_ctx.drawImage(this.offscreen_canvas, x, y, enc_width, enc_height, x, y, width, height);
-			}
+			const rgb_data = decode_rgb(packet);
+			const img = this.offscreen_canvas_ctx.createImageData(enc_width, enc_height);
+			img.data.set(rgb_data);
+			this.offscreen_canvas_ctx.putImageData(img, x, y, 0, 0, width, height);
 			painted();
 			this.may_paint_now();
 		}
-		else if (coding=="jpeg" || coding=="png" || coding=="webp") {
-			this._non_video_paint(coding);
+		else if (coding=="jpeg" || coding.startsWith("png") || coding=="webp") {
 			if (bitmap) {
 				paint_bitmap();
 				return;
@@ -1504,8 +1366,8 @@ XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_
 					paint_error("invalid image size: "+j.width+"x"+j.height);
 				}
 				else {
-					me.offscreen_canvas_ctx.clearRect(x, y, j.width, j.height);
-					me.offscreen_canvas_ctx.drawImage(j, x, y);
+					me.offscreen_canvas_ctx.clearRect(x, y, width, height);
+					me.offscreen_canvas_ctx.drawImage(j, x, y, width, height);
 					painted();
 				}
 				me.may_paint_now();
@@ -1514,36 +1376,8 @@ XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_
 				paint_error("failed to load "+coding+" into image tag");
 				me.may_paint_now();
 			};
-			j.src = "data:image/"+coding+";base64," + Utilities.ArrayBufferToBase64(img_data);
-		}
-		else if (coding=="mpeg1") {
-			const frame = options["frame"] || 0;
-			if (frame==0 || this.jsmpeg_decoder==null) {
-				const mpeg_options = {};
-				mpeg_options.streaming = true;
-				mpeg_options.decodeFirstFrame = false;
-				this.jsmpeg_decoder = new JSMpeg.Decoder.MPEG1Video(mpeg_options);
-				//TODO: instead of delegating, we should probably subclass the renderer
-				// (but which one! GL or not?):
-				const renderer = new Object();
-				renderer.render = function render(Y, Cr, Cb) {
-					const jsmpeg_renderer = me.get_jsmpeg_renderer();
-					jsmpeg_renderer.render(Y, Cr, Cb);
-					const canvas = jsmpeg_renderer.canvas;
-					me.offscreen_canvas_ctx.drawImage(canvas, x, y, width, height);
-					paint_box("olive", x, y, width, height);
-				};
-				renderer.resize = function resize(newWidth, newHeight) {
-					const jsmpeg_renderer = me.get_jsmpeg_renderer();
-					jsmpeg_renderer.resize(newWidth, newHeight);
-				};
-				this.jsmpeg_decoder.connect(renderer);
-			}
-			this.jsmpeg_decoder.write(frame, img_data);
-			const decoded = this.jsmpeg_decoder.decode();
-			this.debug("draw", coding, "frame", frame, "data len=", img_data.length, "decoded=", decoded);
-			//TODO: only call painted when we have actually painted the frame?
-			painted();
+            const paint_coding = coding.split("/")[0];   //ie: "png/P" -> "png"
+			j.src = "data:image/"+paint_coding+";base64," + Utilities.ArrayBufferToBase64(img_data);
 		}
 		else if (coding=="h264") {
 			const frame = options["frame"] || 0;
@@ -1561,39 +1395,7 @@ XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_
 			// (and already painted via the onPictureDecoded callback)
 			painted();
 		}
-		else if (coding=="h264+mp4" || coding=="vp8+webm" || coding=="mpeg4+mp4") {
-			const frame = options["frame"] || -1;
-			if(frame==0) {
-				this._close_video();
-			}
-			if(!this.video) {
-				const profile = options["profile"] || "baseline";
-				const level = options["level"] || "3.0";
-				this._init_video(width, height, coding, profile, level);
-			}
-			else {
-				//keep it above the div:
-				this.video.style.zIndex = this.div.css("z-index")+1;
-			}
-			if(img_data.length>0) {
-				this.debug("draw", "video state=", MediaSourceConstants.READY_STATE[this.video.readyState], ", network state=", MediaSourceConstants.NETWORK_STATE[this.video.networkState]);
-				this.debug("draw", "video paused=", this.video.paused, ", video buffers=", this.video_buffers.length);
-				this.video_buffers.push(img_data);
-				if(this.video.paused) {
-					this.video.play();
-				}
-				this._push_video_buffers();
-				//try to throttle input:
-				const delay = Math.max(10, 50 * (this.video_buffers.length - 25));
-				setTimeout(function() {
-					painted();
-					me.may_paint_now();
-				}, delay);
-				//this.debug("draw", "video queue: ", this.video_buffers.length);
-			}
-		}
 		else if (coding=="scroll") {
-			this._non_video_paint(coding);
 			for(let i=0,j=img_data.length;i<j;++i) {
 				const scroll_data = img_data[i];
 				this.debug("draw", "scroll", i, ":", scroll_data);
@@ -1616,6 +1418,7 @@ XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_
 		}
 	}
 	catch (e) {
+		const packet_sequence = packet[8];
 		this.exc(e, "error painting", coding, "sequence no", packet_sequence);
 		paint_error(e);
 	}
@@ -1626,8 +1429,6 @@ XpraWindow.prototype.do_paint = function paint(x, y, width, height, coding, img_
  */
 XpraWindow.prototype.destroy = function destroy() {
 	// remove div
-	this._close_jsmpeg();
 	this._close_broadway();
-	this._close_video();
 	this.div.remove();
 };

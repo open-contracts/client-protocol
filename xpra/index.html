@@ -13,7 +13,7 @@
 		<meta name="description" content="xpra websockets client">
 		<meta name="apple-mobile-web-app-capable" content="yes">
 		<meta name="mobile-web-app-capable" content="yes">
-		<link rel="shortcut icon" type="image/png" href="./favicon.png" id="favicon">
+		<link rel="shortcut icon" type="image/png" href="favicon.png" id="favicon">
 
 		<link rel="stylesheet" href="css/client.css">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
@@ -52,8 +52,13 @@
 		<script type="text/javascript" src="js/Protocol.js"></script>
 		<script type="text/javascript" src="js/Window.js"></script>
 		<script type="text/javascript" src="js/Notifications.js"></script>
+		<script type="text/javascript" src="js/Constants.js"></script>
 		<script type="text/javascript" src="js/Utilities.js"></script>
 		<script type="text/javascript" src="js/MediaSourceUtil.js"></script>
+		<script type="text/javascript" src="js/RgbHelpers.js"></script>
+		<script type="text/javascript" src="js/ImageDecoder.js"></script>
+		<script type="text/javascript" src="js/VideoDecoder.js"></script>
+		<script type="text/javascript" src="js/OffscreenDecodeWorkerHelper.js"></script>
 		<script type="text/javascript" src="js/Client.js"></script>
 
 		<link rel="stylesheet" type="text/css" href="css/menu.css"/>
@@ -61,6 +66,10 @@
 		<script type="application/javascript" src="js/Menu-custom.js"></script>
 		<link rel="stylesheet" type="text/css" href="css/menu-skin.css"/>
 		<link rel="stylesheet" type="text/css" href="css/icon.css"/>
+
+		<!-- slick carousel for window preview feature -->
+		<link rel="stylesheet" type="text/css" href="css/slick.css"/>
+		<script type="text/javascript" src="js/lib/slick.js"></script>
 
 		<!-- simple-keyboard -->
 		<script type="application/javascript" src="js/lib/simple-keyboard.js"></script>
@@ -100,7 +109,7 @@
 					<li class="-hasSubmenu -noChevron">
 						<a href="#" title="Xpra" class="noDrag" data-icon="menu"></a>
 						<ul id="menu_list">
-							<li class="-hasSubmenu" >
+							<li class="-hasSubmenu" id="startmenuentry" style="display: none">
 								<a data-icon="apps" href="#">Start</a>
 								<ul id="startmenu">
 								</ul>
@@ -129,6 +138,7 @@
 									<li><a href="#" data-icon="bug_report" onclick="show_bugreport(event); return false">Bug Report</a></li>
 								</ul>
 							</li>
+							<li><a href="#" data-icon="refresh" onclick="location.reload()">Reload</a></li>
 							<li><a href="#" data-icon="exit_to_app" onclick="client.disconnect_reason='User request'; client.close(); return false">Disconnect</a></li>
 						</ul>
 					</li>
@@ -152,6 +162,8 @@
 			<img id="shadow_pointer" alt="shadow pointer">
 		</div>
 
+		<div id="window_preview"></div>
+
 		<div class="notifications">
 		</div>
 
@@ -161,7 +173,7 @@
 
 		<div id="about">
 			<h2>Xpra HTML5 Client</h2>
-			<h3>Version 4.5.2</h3>
+			<h3>Version 5.0</h3>
 			<span>
 				Copyright (c) 2013-2020 Antoine Martin &lt;antoine@xpra.org&gt;
 				<br />
@@ -172,7 +184,7 @@
 			<span class="info">
 			This code is available under the <a href="./LICENSE">Mozilla Public License Version 2.0</a>
 			<br />
-			For more information, see <a href="https://github.com/Xpra-org/xpra-html5">xpra HTML5 project</a>.
+			For more information, see <a rel="noopener" href="https://github.com/Xpra-org/xpra-html5">xpra HTML5 project</a>.
 			</span>
 		</div>
 
@@ -236,7 +248,7 @@
 		</div>
 
 		<div>
-			<textarea id="pasteboard" style="display: block; position: absolute; left: -99em;"></textarea>
+			<textarea id="pasteboard" readonly style="display: block; position: absolute; left: -99em;"></textarea>
 		</div>
 
 		<div class="simple-keyboard" style="display: block; position: fixed; bottom: 0; width: 100%">
@@ -488,7 +500,7 @@
 				$("#login-overlay").fadeOut();
 				password_input.removeEventListener("keydown", password_special_keys);
 				password_input.value = "";
-				login_callback("");
+				login_callback(null);
 			}
 			function login_connect() {
 				$("#login-overlay").fadeOut();
@@ -566,6 +578,7 @@
 				}
 				const sound = getboolparam("sound", true) || null;
 				const audio_codec = getparam("audio_codec") || null;
+				const offscreen = getboolparam("offscreen", true);
 				const encoding = getparam("encoding") || null;
 				const bandwidth_limit = getintparam("bandwidth_limit", 0) || 0;
 				const action = getparam("action") || "connect";
@@ -712,22 +725,24 @@
 					};
 				}
 
-				// mediasource video
 				if(video) {
-					client.supported_encodings.push("h264");
+					// broadway h264 decoder:
+					client.check_encodings.push("h264");
 					if (JSMpeg && JSMpeg.Renderer && JSMpeg.Decoder) {
+						//TODO: should be moved to 'check_encodings'
+						//and added to the decode worker:
 						client.supported_encodings.push("mpeg1");
 					}
 					if(mediasource_video) {
 						client.supported_encodings.push("vp8+webm", "h264+mp4", "mpeg4+mp4");
 					}
 				}
-				else if(encoding && (encoding !== "auto")) {
-					// the primary encoding can be set
-					client.enable_encoding(encoding);
+				if (encoding) {
+					// the primary encoding
+					client.set_encoding(encoding);
 				}
-				// encodings can be disabled like so
-				// client.disable_encoding("h264");
+				client.offscreen_api = offscreen && client.offscreen_api;
+
 				if(action && (action!="connect")) {
 					const sns = {
 							"mode"	: action,
@@ -1094,7 +1109,10 @@
 					const fileReader = new FileReader();
 					fileReader.onloadend = function (evt) {
 						const u8a = new Uint8Array(evt.target.result);
-						const buf = Utilities.Uint8ToString(u8a);
+						var buf = u8a;
+						if (client.packet_encoder!="rencodeplus") {
+							buf = Utilities.Uint8ToString(u8a);
+						}
 						client.send_file(f.name, f.type, f.size, buf);
 					};
 					fileReader.readAsArrayBuffer(f);
@@ -1222,6 +1240,28 @@
 						const req = elem.requestFullScreen || elem.webkitRequestFullScreen || elem.mozRequestFullScreen || elem.msRequestFullscreen;
 						if (req) {
 							req.call(document.body);
+
+							// event codes: https://www.w3.org/TR/uievents-code/#key-alphanumeric-writing-system
+							const keys = [
+								"AltLeft",
+								"AltRight",
+								"Tab",
+								"Escape",
+								"ContextMenu",
+								"MetaLeft",
+								"MetaRight",
+								"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11",
+							];
+							navigator.keyboard.lock(keys).then(
+								() => {
+									console.log("keyboard lock success");
+								}
+							).catch(
+								(e) => {
+									console.log("keyboard lock failed: ", e);
+								}
+							)
+
 							$('#fullscreen').attr('src', './icons/unfullscreen.png');
 							elem.title = "Exit Fullscreen";
 							$('#fullscreen_button').attr('data-icon', 'fullscreen_exit');
@@ -1331,12 +1371,10 @@
 					clog("visibilitychange hidden=", document.hidden, "connected=", client.connected);
 					if (client.connected) {
 						if (document.hidden) {
-							client.send(["suspend", true, window_ids]);
+							client.suspend();
 						}
 						else {
-							client.send(["resume", true, window_ids]);
-							client.redraw_windows();
-							client.request_refresh(-1);
+							client.resume();
 						}
 					}
 				});
@@ -1353,6 +1391,13 @@
 					toggle_keyboard();
 				});
 
+				// Configure Xpra tray window list right click behavior.
+				$("#open_windows_list").siblings("a").on('mousedown', (e) => {
+					if (e.buttons === 2) {
+						client.toggle_window_preview();
+					}
+				});
+
 				const screen_change_events = "webkitfullscreenchange mozfullscreenchange fullscreenchange MSFullscreenChange";
 				$(document).on(screen_change_events, function () {
 					const f_el = document.fullscreenElement || document.mozFullScreen || document.webkitIsFullScreen || document.msFullscreenElement;
@@ -1364,9 +1409,32 @@
 				});
 				// disable right click menu:
 				window.oncontextmenu = function(e) {
-					client._poll_clipboard(e);
+					if (this.clipboard_direction === "to-client" || this.clipboard_direction === "both") {
+						client._poll_clipboard(e);
+					}
+					e.preventDefault();
+					e.stopPropagation();
 					return false;
 				}
+
+				// Send clipboard from browser on focus if client-to-server clipboard is enabled.
+				$(window).on("focus", (e) => {
+					if (this.clipboard_direction === "to-server" || this.clipboard_direction === "both") {
+						client._poll_clipboard(e);
+					}
+				});
+
+				// Prevent stuck keys.
+				$(window).on("blur", (e) => {
+					if (client.last_key_packet.length > 2 && client.last_keycode_pressed > 0) {
+						console.log("clearing keycode: " + client.last_keycode_pressed);
+						key_packet = client.last_key_packet;
+						// Set pressed = false to indicate key up.
+						key_packet[3] = false;
+						client.send(key_packet);
+						client.last_key_packet = [];
+					}
+				});
 			}
 
 			$(document).ready(function() {

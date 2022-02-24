@@ -10,8 +10,8 @@
 'use strict';
 
 const Utilities = {
-	VERSION : "4.5.2",
-	REVISION : 1046,
+	VERSION : "5.0",
+	REVISION : 1237,
 	LOCAL_MODIFICATIONS : 0,
 	BRANCH : "master",
 
@@ -206,15 +206,6 @@ const Utilities = {
 		}
 		Utilities.debug("getKeyboardLayout()=", layout);
 		return layout;
-	},
-
-	canUseWebP : function() {
-	    const elem = document.createElement('canvas');
-	    const ctx = elem.getContext('2d');
-	    if (!ctx) {
-	    	return false;
-	    }
-        return elem.toDataURL('image/webp').indexOf('data:image/webp') == 0;
 	},
 
 	getAudioContextClass : function() {
@@ -427,13 +418,6 @@ const Utilities = {
 	    }
 	},
 
-	monotonicTime : function() {
-		if (performance) {
-			return Math.round(performance.now());
-		}
-		return Date.now();
-	},
-
 	StringToUint8 : function(str) {
 		const u8a = new Uint8Array(str.length);
 		for(let i=0,j=str.length;i<j;++i){
@@ -474,6 +458,15 @@ const Utilities = {
 			}
 		}
 		return window.btoa(s);
+	},
+
+	ToBase64 : function(v) {
+		try {
+			return window.btoa(v);
+		}
+		catch (e) {
+			return ArrayBufferToBase64(v);
+		}
 	},
 
 	convertDataURIToBinary : function (dataURI) {
@@ -671,43 +664,6 @@ const Utilities = {
 	},
 };
 
-
-const MOVERESIZE_SIZE_TOPLEFT      = 0;
-const MOVERESIZE_SIZE_TOP          = 1;
-const MOVERESIZE_SIZE_TOPRIGHT     = 2;
-const MOVERESIZE_SIZE_RIGHT        = 3;
-const MOVERESIZE_SIZE_BOTTOMRIGHT  = 4;
-const MOVERESIZE_SIZE_BOTTOM       = 5;
-const MOVERESIZE_SIZE_BOTTOMLEFT   = 6;
-const MOVERESIZE_SIZE_LEFT         = 7;
-const MOVERESIZE_MOVE              = 8;
-const MOVERESIZE_SIZE_KEYBOARD     = 9;
-const MOVERESIZE_MOVE_KEYBOARD     = 10;
-const MOVERESIZE_CANCEL            = 11;
-const MOVERESIZE_DIRECTION_STRING = {
-                               0    : "SIZE_TOPLEFT",
-                               1    : "SIZE_TOP",
-                               2    : "SIZE_TOPRIGHT",
-                               3    : "SIZE_RIGHT",
-                               4  	: "SIZE_BOTTOMRIGHT",
-                               5    : "SIZE_BOTTOM",
-                               6   	: "SIZE_BOTTOMLEFT",
-                               7    : "SIZE_LEFT",
-                               8	: "MOVE",
-                               9    : "SIZE_KEYBOARD",
-                               10   : "MOVE_KEYBOARD",
-                               11	: "CANCEL",
-                               };
-const MOVERESIZE_DIRECTION_JS_NAME = {
-        0	: "nw",
-        1	: "n",
-        2	: "ne",
-        3	: "e",
-        4	: "se",
-        5	: "s",
-        6	: "sw",
-        7	: "w",
-        };
 
 //convert a language code into an X11 keyboard layout code:
 const LANGUAGE_TO_LAYOUT = {
