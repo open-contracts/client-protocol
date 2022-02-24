@@ -14,7 +14,6 @@ encryption = AES-CBC
 floating_menu = no
 keyboard = yes
 clipboard = no
-keyboard = no
 printing = no
 sound = no
 file_transfer = no
