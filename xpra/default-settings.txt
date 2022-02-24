@@ -12,7 +12,6 @@ port = 14500
 ssl = true
 encryption = AES-CBC
 floating_menu = no
-keyboard = yes
 clipboard = no
 printing = no
 sound = no
