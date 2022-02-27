@@ -574,6 +574,7 @@ async function OpenContracts() {
                             if (this.outputs[i].name == "") {this.outputs[i].name = this.outputs[i].type}
                             if (this.outputs[i].parseFloat) {txReturn[i] = ethers.utils.parseEther(String(txReturn[i]))}
                             results += `${this.outputs.name}: ${String(txReturn[i])}`
+                            if (i < this.outputs.length-1) {results += ", "}
                         }
                         return results
                     };
