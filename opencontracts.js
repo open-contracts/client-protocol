@@ -545,7 +545,7 @@ async function OpenContracts() {
                         this.errorHandler(error);
                     });
                     if (success) {
-                        const results = Object.entries(tx).slice(tx.length);
+                        const results = Object.entries(txReturn).slice(txReturn.length);
                         if (results.length > 0) {
                             return String(results.map((r)=>` ${r[0]}: ${r[1]}`))
                         } else {
