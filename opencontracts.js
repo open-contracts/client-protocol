@@ -544,7 +544,14 @@ async function OpenContracts() {
                         }
                         this.errorHandler(error);
                     });
-                    if (success) {return String(txReturn)};
+                    if (success) {
+                        const results = Object.entries(tx).slice(tx.length);
+                        if (results.length > 0) {
+                            return String(results.map((r)=>` ${r[0]}: ${r[1]}`))
+                        } else {
+                            return String(txReturn)
+                        }
+                    };
                 }
             }
             opencontracts.contractFunctions.push(f);
