@@ -436,7 +436,9 @@ async function OpenContracts() {
             const [user, repo, branch] = this.location.slice(1);
             const url = `https://raw.githubusercontent.com/${user}/${repo}/${branch || "main"}`;
             console.warn('loading contract at:', url);
-            this.interface = JSON.parse(await (await fetch(new URL(url + "/interface.json"))).text()).catch((error)=>{
+            try {
+                this.interface = JSON.parse(await (await fetch(new URL(url + "/interface.json"))).text())
+            } catch {
                 throw new ClientError(`Couldn't load contract. The repo at https://github.com/${user}/${repo}/tree/${branch || "main"} may not exist or contains an invalid interface.json`)
             });
             this.oracleHashes = JSON.parse(await (await fetch(new URL(url + "/oracleHashes.json")).catch(
