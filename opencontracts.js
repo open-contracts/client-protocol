@@ -203,6 +203,7 @@ async function decrypt(AESkey, json) {
 
 async function enclaveSession(opencontracts, f) {
     // TODO: check registry returns for validity
+    window.f = f;
     var oracleIP = new URLSearchParams(window.location.search).get('oracleIP');
     if (oracleIP) {
         console.warn("Oracle IP override: ", oracleIP);
