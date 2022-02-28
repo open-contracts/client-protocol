@@ -484,7 +484,6 @@ async function OpenContracts() {
             }
         }
         this.approveOPN = async function (amountString) {
-            await this.connectWallet();
             const amount = ethers.utils.parseEther(amountString);
             await this.OPNtoken.connect(this.signer).approve(this.OPNverifier.address, amount);
         }
@@ -548,7 +547,6 @@ async function OpenContracts() {
                 }
             }
             f.call = async function () {
-                await opencontracts.connectWallet();
                 const unspecifiedInputs = this.inputs.filter(i=>i.value == null).map(i => i.name);
                 if (unspecifiedInputs.length > 0) {
                     throw new ClientError(`The following inputs to "${this.name}" were unspecified:  ${unspecifiedInputs}`);
