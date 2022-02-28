@@ -472,7 +472,6 @@ async function OpenContracts() {
             throw new ClientError("Couldn't find contract at " + contractLocation); 
         }
         this.getOPN = async function (amountString) {
-            await this.connectWallet();
             const amount = ethers.utils.parseEther(amountString);
             if (this.network == "ropsten") {
                 await this.OPNtoken.connect(this.signer).mint(amount);
