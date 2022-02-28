@@ -325,7 +325,7 @@ async function connect(opencontracts, f, oracle) {
                 await f.submitHandler(async function() {
                     var success = true;
                     f.results = {oracleID: data.oracleID, nonce: data.nonce, calldata: data.calldata, oracleSignature: data.oracleSignature,
-                                 provider: oracle.provider, price: String(oracle.price), registryPrice: String(oracle.registryPrice), registrySignature: oracle.registrySignature};
+                                 oracleProvider: oracle.provider, oraclePrice: String(oracle.price), registryPrice: String(oracle.registryPrice), registrySignature: oracle.registrySignature};
                     window.results = f.results;
                     var txReturn = await requestHubTransaction(opencontracts, f.results)
                     .then(function(tx){window.tx = tx; return tx})
