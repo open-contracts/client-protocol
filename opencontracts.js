@@ -462,8 +462,12 @@ async function OpenContracts() {
             } catch {
                 throw new ClientError(`Couldn't load contract. The repo at https://github.com/${user}/${repo}/tree/${branch || "main"} may not exist or contains an invalid interface.json`)
             };
-            this.oracleHashes = JSON.parse(await (await fetch(new URL(url + "/oracleHashes.json")).catch(
-                (error)=>{console.warn("no oralceHashes.json found!"); this.oracleHashes = {}})).text());
+            try {
+                this.oracleHashes = JSON.parse(await (await fetch(new URL(url + "/oracleHashes.json"))).text())
+            } catch {
+                console.warn("No valid oralceHashes.json found! Assuming no oracle functions.");
+                this.oracleHashes = {};
+            };
         } else {
             throw new ClientError("Couldn't find contract at " + contractLocation); 
         }
