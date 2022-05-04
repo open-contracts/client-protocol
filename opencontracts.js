@@ -435,7 +435,7 @@ async function OpenContracts() {
                   42161: "https://arb1.arbitrum.io/rpc",
                 },
               });
-              await provider.enable();
+              await ethereum.enable();
             }
             if (ethereum) {
               ethereum.request({ method: 'eth_requestAccounts' });
